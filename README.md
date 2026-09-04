@@ -62,6 +62,20 @@ changing deduplication correctness.
 
 ## Installation
 
+### Install from AnkiWeb (recommended)
+
+1. In Anki Desktop, open **Tools → Add-ons**.
+2. Click **Get Add-ons...**.
+3. Enter add-on code **`490461948`**.
+4. Restart Anki.
+
+AnkiWeb page: [Anki Media Deduplicator](https://ankiweb.net/shared/info/490461948)
+
+### Install a release package
+
+Download the `.ankiaddon` file from the latest GitHub release, then open it with Anki or
+use **Tools → Add-ons → Install from file...**.
+
 ### Development installation
 
 1. Quit Anki.
@@ -74,9 +88,6 @@ On macOS the default location is:
 ```text
 ~/Library/Application Support/Anki2/addons21/
 ```
-
-For a packaged release, import the `.ankiaddon` file through **Tools → Add-ons → Install
-from file**.
 
 ## Usage
 
