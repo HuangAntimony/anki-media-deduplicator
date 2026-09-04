@@ -1,8 +1,6 @@
 {
   "package": "anki_media_deduplicator",
   "name": "Anki Media Deduplicator",
-  "mod": 0,
-  "min_point_version": 250904,
-  "max_point_version": 260801
+  "mod": 1788518400,
+  "min_point_version": 250904
 }
-

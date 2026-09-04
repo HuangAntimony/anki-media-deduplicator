@@ -1,6 +1,7 @@
+import threading
 from pathlib import Path
 
-from anki_media_deduplicator.cache import NullHashCache
+from anki_media_deduplicator.cache import HashCache, NullHashCache
 from anki_media_deduplicator.dedupe import find_duplicates
 from anki_media_deduplicator.models import CancellationToken
 from anki_media_deduplicator.scanner import scan_directory
@@ -66,3 +67,36 @@ def test_case_insensitive_extensions_can_merge(tmp_path: Path) -> None:
     (tmp_path / "two.mp3").write_bytes(b"same")
 
     assert len(groups(tmp_path)) == 1
+
+
+def test_real_sqlite_cache_is_only_accessed_by_coordinator_thread(tmp_path: Path) -> None:
+    payload = b"x" * (300 * 1024)
+    (tmp_path / "one.mp3").write_bytes(payload)
+    (tmp_path / "two.mp3").write_bytes(payload)
+    files = scan_directory(tmp_path, set(), CancellationToken()).files
+    cache = HashCache(tmp_path / "cache.sqlite3")
+
+    try:
+        result = find_duplicates(files, cache, CancellationToken(), max_workers=2)
+    finally:
+        cache.close()
+
+    assert len(result) == 1
+
+
+def test_hash_workers_never_access_cache(tmp_path: Path) -> None:
+    payload = b"x" * (300 * 1024)
+    (tmp_path / "one.mp3").write_bytes(payload)
+    (tmp_path / "two.mp3").write_bytes(payload)
+    files = scan_directory(tmp_path, set(), CancellationToken()).files
+    owner = threading.get_ident()
+
+    class ThreadBoundCache(NullHashCache):
+        def get(self, file):
+            assert threading.get_ident() == owner
+            return None
+
+        def put(self, file, *, sha256, quick):
+            assert threading.get_ident() == owner
+
+    assert len(find_duplicates(files, ThreadBoundCache(), CancellationToken(), max_workers=2)) == 1

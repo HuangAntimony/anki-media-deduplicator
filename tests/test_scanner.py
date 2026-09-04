@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from anki_media_deduplicator.models import CancelledError, CancellationToken
+from anki_media_deduplicator.models import CancellationToken, CancelledError
 from anki_media_deduplicator.scanner import scan_directory
 
 
@@ -22,7 +22,8 @@ def test_scan_filters_nonfiles_zero_symlinks_and_protected(tmp_path: Path) -> No
     assert result.protected_skipped == 3
     assert result.zero_byte_skipped == 1
     assert result.invalid_skipped == 2
-    assert result.total_size == 3
+    assert result.media_file_count == 5
+    assert result.total_size == 6
 
 
 def test_scan_preserves_unicode_spaces_extension_and_mtime(tmp_path: Path) -> None:
@@ -45,4 +46,3 @@ def test_scan_honors_cancellation(tmp_path: Path) -> None:
 
     with pytest.raises(CancelledError):
         scan_directory(tmp_path, set(), token)
-

@@ -102,3 +102,10 @@ def test_matching_existing_target_is_used_even_if_not_indexed_in_group(tmp_path:
     assert choice.filename == "cat.mp3"
     assert choice.state is RestorationState.EXISTING_CLEAN
 
+
+def test_untransformed_short_prefix_is_not_treated_as_ankidroid_pattern(tmp_path: Path) -> None:
+    duplicate_group = group(tmp_path, "a812736128736128736.mp3", "a192837465192837465.mp3")
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.state is RestorationState.NOT_ANKIDROID_PATTERN

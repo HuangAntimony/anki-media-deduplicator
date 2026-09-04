@@ -9,6 +9,10 @@ ANDROID_LONG_MAX = 9_223_372_036_854_775_807
 ANDROID_SUFFIX_MAX_DIGITS = 19
 
 
+def _valid_android_prefix(prefix: str) -> bool:
+    return len(prefix) >= 3
+
+
 def _prefix_candidates(stem: str) -> set[str]:
     candidates: set[str] = set()
     max_length = min(ANDROID_SUFFIX_MAX_DIGITS, len(stem))
@@ -17,7 +21,7 @@ def _prefix_candidates(stem: str) -> set[str]:
         prefix = stem[:-length]
         if not prefix or not suffix.isdecimal():
             continue
-        if int(suffix) <= ANDROID_LONG_MAX:
+        if int(suffix) <= ANDROID_LONG_MAX and _valid_android_prefix(prefix):
             candidates.add(prefix)
     return candidates
 
@@ -69,4 +73,3 @@ def select_canonical(
     if target.size == group.size and files_equal(target.path, group.files[0].path):
         return CanonicalChoice(target_name, RestorationState.EXISTING_CLEAN, target)
     return CanonicalChoice(fallback.filename, RestorationState.TARGET_CONFLICT, fallback)
-

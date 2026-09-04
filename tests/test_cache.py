@@ -1,4 +1,3 @@
-import sqlite3
 from pathlib import Path
 
 from anki_media_deduplicator.cache import HashCache

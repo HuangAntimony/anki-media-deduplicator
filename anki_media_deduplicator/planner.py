@@ -58,10 +58,9 @@ def build_plan(
     return DeduplicationPlan(
         group_plans,
         notes,
-        index.total_entries,
+        index.media_file_count,
         index.total_size,
         index.protected_skipped,
         affected_ids,
         reference_count,
     )
-

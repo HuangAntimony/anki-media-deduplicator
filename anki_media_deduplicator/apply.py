@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol
@@ -7,6 +8,8 @@ from typing import Protocol
 from .hashing import files_equal
 from .models import ApplyResult, DeduplicationPlan, GroupPlan, NoteSnapshot
 from .references import extract_references, rewrite_field
+
+logger = logging.getLogger(__name__)
 
 
 class CollectionPort(Protocol):
@@ -26,8 +29,9 @@ class CollectionPort(Protocol):
 class ApplyExecutor:
     """Apply a plan while preserving references-before-trash crash safety."""
 
-    def __init__(self, *, batch_size: int = 500) -> None:
+    def __init__(self, *, batch_size: int = 500, progress=None) -> None:
         self.batch_size = batch_size
+        self.progress = progress or (lambda label, value=0, maximum=0: None)
 
     def _is_fresh(self, group_plan: GroupPlan) -> bool:
         files = group_plan.group.files
@@ -42,22 +46,26 @@ class ApplyExecutor:
         return all(files_equal(representative.path, file.path) for file in files[1:])
 
     def execute(self, plan: DeduplicationPlan, port: CollectionPort) -> ApplyResult:
+        self.progress("Verifying media...", 0, len(plan.groups))
         active: list[GroupPlan] = []
         skipped = 0
-        for group_plan in plan.groups:
+        for index, group_plan in enumerate(plan.groups, 1):
             if not self._is_fresh(group_plan):
+                logger.warning("stale group skipped: %s", group_plan.group.sha256[:12])
                 skipped += 1
                 continue
             choice = group_plan.choice
-            if choice.existing is None:
-                if not port.ensure_media_file(group_plan.group.files[0].path, choice.filename):
-                    skipped += 1
-                    continue
+            if choice.existing is None and not port.ensure_media_file(
+                group_plan.group.files[0].path, choice.filename
+            ):
+                skipped += 1
+                continue
             target = port.media_dir / choice.filename
             if not target.exists() or not files_equal(target, group_plan.group.files[0].path):
                 skipped += 1
                 continue
             active.append(group_plan)
+            self.progress("Verifying media...", index, len(plan.groups))
 
         replacements = {
             old: group_plan.choice.filename
@@ -66,6 +74,7 @@ class ApplyExecutor:
         }
         changed_notes: list[NoteSnapshot] = []
         replacement_count = 0
+        self.progress("Updating notes...", 0, len(plan.affected_note_ids))
         for note in port.iter_notes():
             fields: list[str] = []
             changed = False
@@ -79,6 +88,11 @@ class ApplyExecutor:
 
         for start in range(0, len(changed_notes), self.batch_size):
             port.update_notes(changed_notes[start : start + self.batch_size])
+            self.progress(
+                "Updating notes...",
+                min(start + self.batch_size, len(changed_notes)),
+                len(changed_notes),
+            )
 
         remaining = {
             name
@@ -89,8 +103,12 @@ class ApplyExecutor:
         }
         remaining.update(port.static_references().intersection(replacements))
         trash = sorted(name for name in replacements if name not in remaining)
+        for name in sorted(remaining):
+            logger.warning("referenced duplicate retained: %s", name)
         if trash:
+            self.progress("Trashing duplicate media...", 0, len(trash))
             port.trash_files(trash)
+            self.progress("Trashing duplicate media...", len(trash), len(trash))
         return ApplyResult(
             len(changed_notes), replacement_count, tuple(trash), skipped
         )

@@ -43,6 +43,7 @@ class IndexResult:
     protected_skipped: int
     zero_byte_skipped: int
     invalid_skipped: int
+    media_file_count: int
 
 
 @dataclass(slots=True)

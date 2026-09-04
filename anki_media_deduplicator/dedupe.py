@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-from .cache import CacheEntry, NullHashCache
+from .cache import NullHashCache
 from .hashing import Opener, files_equal, full_sha256, quick_fingerprint
 from .models import CancellationToken, DuplicateGroup, FileInfo
 
@@ -25,9 +25,7 @@ def find_duplicates(
 
     def quick(file: FileInfo) -> tuple[FileInfo, str]:
         cancellation.raise_if_cancelled()
-        hit = cache.get(file)
-        value = hit.quick if hit and hit.quick else quick_fingerprint(file.path, file.size, opener=opener)
-        return file, value
+        return file, quick_fingerprint(file.path, file.size, opener=opener)
 
     full_candidates: list[FileInfo] = []
     with ThreadPoolExecutor(max_workers=max(1, min(4, max_workers))) as pool:
@@ -37,7 +35,16 @@ def find_duplicates(
                 full_candidates.extend(bucket)
                 continue
             quick_groups: dict[str, list[FileInfo]] = defaultdict(list)
-            for file, fingerprint in pool.map(quick, bucket):
+            cached_quick: list[tuple[FileInfo, str]] = []
+            uncached_quick: list[FileInfo] = []
+            for file in bucket:
+                hit = cache.get(file)
+                if hit and hit.quick:
+                    cached_quick.append((file, hit.quick))
+                else:
+                    uncached_quick.append(file)
+            quick_results = [*cached_quick, *pool.map(quick, uncached_quick)]
+            for file, fingerprint in quick_results:
                 quick_groups[fingerprint].append(file)
                 hit = cache.get(file)
                 cache.put(
@@ -51,11 +58,17 @@ def find_duplicates(
 
         def full(file: FileInfo) -> tuple[FileInfo, str]:
             cancellation.raise_if_cancelled()
-            hit = cache.get(file)
-            value = hit.sha256 if hit and hit.sha256 else full_sha256(file.path, opener=opener)
-            return file, value
+            return file, full_sha256(file.path, opener=opener)
 
-        hashed = list(pool.map(full, full_candidates))
+        hashed: list[tuple[FileInfo, str]] = []
+        uncached_full: list[FileInfo] = []
+        for file in full_candidates:
+            hit = cache.get(file)
+            if hit and hit.sha256:
+                hashed.append((file, hit.sha256))
+            else:
+                uncached_full.append(file)
+        hashed.extend(pool.map(full, uncached_full))
 
     hash_groups: dict[tuple[str, int, str], list[FileInfo]] = defaultdict(list)
     for file, digest in hashed:

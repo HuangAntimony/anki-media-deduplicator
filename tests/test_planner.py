@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from anki_media_deduplicator.cache import NullHashCache
+from anki_media_deduplicator.dedupe import find_duplicates
 from anki_media_deduplicator.models import (
     CancellationToken,
     FileInfo,
@@ -7,8 +9,6 @@ from anki_media_deduplicator.models import (
     NoteSnapshot,
 )
 from anki_media_deduplicator.planner import build_plan
-from anki_media_deduplicator.cache import NullHashCache
-from anki_media_deduplicator.dedupe import find_duplicates
 
 
 def test_build_plan_scans_notes_once_and_counts_notes_and_occurrences(tmp_path: Path) -> None:
@@ -19,9 +19,15 @@ def test_build_plan_scans_notes_once_and_counts_notes_and_occurrences(tmp_path: 
         stat = path.stat()
         files.append(FileInfo(path.name, path, stat.st_size, path.suffix, stat.st_mtime_ns))
     groups = find_duplicates(files, NullHashCache(), CancellationToken())
-    index = IndexResult(files, 2, 8, 0, 0, 0)
+    index = IndexResult(files, 2, 8, 0, 0, 0, 2)
     notes = [
-        NoteSnapshot(1, ("[sound:cat812736128736128736.mp3] twice [sound:cat812736128736128736.mp3]",)),
+        NoteSnapshot(
+            1,
+            (
+                "[sound:cat812736128736128736.mp3] twice "
+                "[sound:cat812736128736128736.mp3]",
+            ),
+        ),
         NoteSnapshot(2, ('<audio src="cat192837465192837465.mp3">',)),
         NoteSnapshot(3, ("unrelated",)),
     ]
@@ -37,4 +43,3 @@ def test_build_plan_scans_notes_once_and_counts_notes_and_occurrences(tmp_path: 
         "cat812736128736128736.mp3": 2,
         "cat192837465192837465.mp3": 1,
     }
-
