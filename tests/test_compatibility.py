@@ -67,6 +67,20 @@ def test_anki_port_uses_public_note_and_media_apis(tmp_path: Path) -> None:
     assert collection.media.trashed == ["old.mp3"]
 
 
+def test_anki_port_reports_note_loading_progress(tmp_path: Path) -> None:
+    collection = FakeCollection(tmp_path)
+    events: list[tuple[int, int]] = []
+
+    notes = list(
+        AnkiCollectionPort(collection).iter_notes(
+            lambda value, maximum: events.append((value, maximum))
+        )
+    )
+
+    assert len(notes) == 2
+    assert events == [(0, 2), (1, 2), (2, 2)]
+
+
 def test_ensure_media_file_requires_backend_to_return_exact_target(tmp_path: Path) -> None:
     collection = FakeCollection(tmp_path)
     source = tmp_path / "random.mp3"

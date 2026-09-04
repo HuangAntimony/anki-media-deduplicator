@@ -46,3 +46,21 @@ def test_scan_honors_cancellation(tmp_path: Path) -> None:
 
     with pytest.raises(CancelledError):
         scan_directory(tmp_path, set(), token)
+
+
+def test_scan_reports_determinate_monotonic_progress(tmp_path: Path) -> None:
+    for name in ("a.mp3", "b.mp3", "c.mp3"):
+        (tmp_path / name).write_bytes(name.encode())
+    events: list[tuple[int, int]] = []
+
+    scan_directory(
+        tmp_path,
+        set(),
+        CancellationToken(),
+        progress=lambda value, maximum: events.append((value, maximum)),
+    )
+
+    assert events[0] == (0, 3)
+    assert events[-1] == (3, 3)
+    assert [value for value, _ in events] == sorted(value for value, _ in events)
+    assert {maximum for _, maximum in events} == {3}

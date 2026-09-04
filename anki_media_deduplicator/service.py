@@ -23,19 +23,36 @@ def scan_collection(
 ) -> DeduplicationPlan:
     require_supported_apis(collection)
     port = AnkiCollectionPort(collection)
-    progress(tr("indexing_media"), 0, 0)
     protected = port.static_references()
-    index = scan_directory(port.media_dir, protected, cancellation)
-    progress(tr("hashing_media"), 0, len(index.files))
+    index = scan_directory(
+        port.media_dir,
+        protected,
+        cancellation,
+        progress=lambda value, maximum: progress(tr("indexing_media"), value, maximum),
+    )
     cache = HashCache(cache_path)
     try:
-        groups = find_duplicates(index.files, cache, cancellation, max_workers=4)
+        groups = find_duplicates(
+            index.files,
+            cache,
+            cancellation,
+            max_workers=4,
+            progress=lambda stage, value, maximum: progress(tr(stage), value, maximum),
+        )
         cache.prune_missing(port.media_dir, {file.filename for file in index.files})
     finally:
         cache.close()
     cancellation.raise_if_cancelled()
-    progress(tr("scanning_references"), 0, 0)
-    notes = list(port.iter_notes())
+    notes = list(
+        port.iter_notes(
+            lambda value, maximum: progress(tr("scanning_references"), value, maximum)
+        )
+    )
     cancellation.raise_if_cancelled()
-    progress(tr("building_plan"), 0, len(groups))
-    return build_plan(index, groups, notes, port.media_dir)
+    return build_plan(
+        index,
+        groups,
+        notes,
+        port.media_dir,
+        progress=lambda value, maximum: progress(tr("building_plan"), value, maximum),
+    )

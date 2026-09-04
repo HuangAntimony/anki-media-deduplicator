@@ -46,8 +46,13 @@ class FakePort:
         (self.media_dir / target_name).write_bytes(source.read_bytes())
         return True
 
-    def iter_notes(self):
-        return [NoteSnapshot(note_id, tuple(fields)) for note_id, fields in self.notes.items()]
+    def iter_notes(self, progress=None):
+        snapshots = [NoteSnapshot(note_id, tuple(fields)) for note_id, fields in self.notes.items()]
+        if progress:
+            progress(0, len(snapshots))
+            for index in range(1, len(snapshots) + 1):
+                progress(index, len(snapshots))
+        return snapshots
 
     def update_notes(self, notes: list[NoteSnapshot]) -> None:
         self.events.append("update")
@@ -175,3 +180,75 @@ def test_static_reference_prevents_trash(tmp_path: Path) -> None:
     ApplyExecutor().execute(plan, port)
 
     assert old not in port.trashed
+
+
+def test_apply_reports_all_long_running_stages_to_completion(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    events: list[tuple[str, int, int]] = []
+
+    executor = ApplyExecutor(
+        progress=lambda label, value, maximum: events.append((label, value, maximum))
+    )
+    executor.execute(plan, port)
+
+    expected_labels = (
+        "Verifying media...",
+        "Scanning notes for updates...",
+        "Updating notes...",
+        "Verifying migrated references...",
+        "Registering media deletions for sync...",
+        "Trashing duplicate media...",
+    )
+    for label in expected_labels:
+        stage_events = [
+            (value, maximum)
+            for event_label, value, maximum in events
+            if event_label == label
+        ]
+        assert stage_events, label
+        assert stage_events[-1][0] == stage_events[-1][1]
+        assert [value for value, _ in stage_events] == sorted(value for value, _ in stage_events)
+
+
+def test_stale_group_still_advances_verification_progress(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    (tmp_path / plan.groups[0].old_filenames[0]).unlink()
+    events: list[tuple[str, int, int]] = []
+
+    executor = ApplyExecutor(
+        progress=lambda label, value, maximum: events.append((label, value, maximum))
+    )
+    executor.execute(plan, port)
+
+    verification = [
+        (value, maximum)
+        for label, value, maximum in events
+        if label == "Verifying media..."
+    ]
+    assert verification[-1] == (1, 1)
+
+
+def test_media_registration_and_trash_report_batch_progress(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    events: list[tuple[str, int, int]] = []
+    executor = ApplyExecutor(
+        media_batch_size=1,
+        progress=lambda label, value, maximum: events.append((label, value, maximum)),
+    )
+
+    executor.execute(plan, port)
+
+    registering = [
+        value
+        for label, value, _ in events
+        if label == "Registering media deletions for sync..."
+    ]
+    trashing = [
+        value for label, value, _ in events if label == "Trashing duplicate media..."
+    ]
+    assert registering == [0, 1, 2]
+    assert trashing == [0, 1, 2]
+    assert port.events.index("update") < port.events.index("trash")

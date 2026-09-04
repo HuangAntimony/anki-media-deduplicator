@@ -74,3 +74,22 @@ def test_build_plan_falls_back_when_different_groups_claim_same_new_target(
     assert len({group.choice.filename for group in plan.groups}) == 2
     assert all(group.choice.existing is not None for group in plan.groups)
     assert plan.files_to_trash == 2
+
+
+def test_build_plan_reports_monotonic_progress_to_completion(tmp_path: Path) -> None:
+    index = IndexResult([], 0, 0, 0, 0, 0, 0)
+    notes = [NoteSnapshot(1, ("one",)), NoteSnapshot(2, ("two",))]
+    events: list[tuple[int, int]] = []
+
+    build_plan(
+        index,
+        [],
+        notes,
+        tmp_path,
+        progress=lambda value, maximum: events.append((value, maximum)),
+    )
+
+    assert events[0][0] == 0
+    assert events[-1][0] == events[-1][1]
+    assert events[-1][1] > 0
+    assert [value for value, _ in events] == sorted(value for value, _ in events)

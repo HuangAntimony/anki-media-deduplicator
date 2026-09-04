@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +18,17 @@ class AnkiCollectionPort:
         self.media_dir = Path(collection.media.dir())
         self.last_changes: Any = None
 
-    def iter_notes(self) -> Iterable[NoteSnapshot]:
-        for note_id in self.collection.find_notes(""):
+    def iter_notes(
+        self, progress: Callable[[int, int], None] | None = None
+    ) -> Iterable[NoteSnapshot]:
+        note_ids = self.collection.find_notes("")
+        if progress:
+            progress(0, len(note_ids))
+        for index, note_id in enumerate(note_ids, 1):
             note = self.collection.get_note(note_id)
             yield NoteSnapshot(int(note.id), tuple(note.fields))
+            if progress:
+                progress(index, len(note_ids))
 
     def update_notes(self, notes: list[NoteSnapshot]) -> None:
         anki_notes = []

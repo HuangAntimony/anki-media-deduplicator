@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 from .filename_inference import conflict_fallback, select_canonical
@@ -19,7 +20,13 @@ def build_plan(
     groups: list[DuplicateGroup],
     notes: list[NoteSnapshot],
     media_dir: Path,
+    *,
+    progress: Callable[[int, int], None] | None = None,
 ) -> DeduplicationPlan:
+    report = progress or (lambda value, maximum: None)
+    maximum = (2 * len(notes)) + (2 * len(groups))
+    completed = 0
+    report(0, maximum)
     duplicate_names = {file.filename for group in groups for file in group.files}
     counts: Counter[str] = Counter()
     note_references: dict[int, list[str]] = {}
@@ -29,6 +36,8 @@ def build_plan(
         if matched:
             note_references[note.note_id] = matched
             counts.update(matched)
+        completed += 1
+        report(completed, maximum)
 
     proposed_choices = []
     for group in groups:
@@ -37,6 +46,8 @@ def build_plan(
         }
         choice = select_canonical(group, group.reference_counts, media_dir)
         proposed_choices.append((group, choice))
+        completed += 1
+        report(completed, maximum)
 
     new_target_counts = Counter(
         choice.filename for _, choice in proposed_choices if choice.existing is None
@@ -55,14 +66,20 @@ def build_plan(
             old_names = tuple(file.filename for file in group.files)
         group_plans.append(GroupPlan(group, choice, old_names))
         replacements.update({name: choice.filename for name in old_names})
+        completed += 1
+        report(completed, maximum)
 
     affected_ids: set[int] = set()
     reference_count = 0
-    for note_id, names in note_references.items():
+    for note in notes:
+        note_id = note.note_id
+        names = note_references.get(note_id, ())
         matched_count = sum(name in replacements for name in names)
         if matched_count:
             affected_ids.add(note_id)
             reference_count += matched_count
+        completed += 1
+        report(completed, maximum)
 
     return DeduplicationPlan(
         group_plans,

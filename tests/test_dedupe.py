@@ -100,3 +100,36 @@ def test_hash_workers_never_access_cache(tmp_path: Path) -> None:
             assert threading.get_ident() == owner
 
     assert len(find_duplicates(files, ThreadBoundCache(), CancellationToken(), max_workers=2)) == 1
+
+
+def test_duplicate_discovery_reports_each_expensive_stage_to_completion(tmp_path: Path) -> None:
+    large = b"x" * (300 * 1024)
+    (tmp_path / "one.mp3").write_bytes(large)
+    (tmp_path / "two.mp3").write_bytes(large)
+    (tmp_path / "unique.mp3").write_bytes(b"unique")
+    files = scan_directory(tmp_path, set(), CancellationToken()).files
+    events: list[tuple[str, int, int]] = []
+
+    find_duplicates(
+        files,
+        NullHashCache(),
+        CancellationToken(),
+        max_workers=2,
+        progress=lambda stage, value, maximum: events.append((stage, value, maximum)),
+    )
+
+    stages = (
+        "finding_candidates",
+        "quick_fingerprinting",
+        "hashing_media",
+        "verifying_duplicates",
+    )
+    for stage in stages:
+        stage_events = [
+            (value, maximum)
+            for event_stage, value, maximum in events
+            if event_stage == stage
+        ]
+        assert stage_events
+        assert stage_events[-1][0] == stage_events[-1][1]
+        assert [value for value, _ in stage_events] == sorted(value for value, _ in stage_events)
