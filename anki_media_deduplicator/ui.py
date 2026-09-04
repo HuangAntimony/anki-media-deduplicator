@@ -148,9 +148,10 @@ class DeduplicatorDialog(QDialog):
             "\n".join(
                 (
                     f"Media entries scanned: {plan.media_files_scanned:,}",
-                    f"Eligible media size: {format_bytes(plan.media_size)}",
+                    f"Total media size: {format_bytes(plan.media_size)}",
                     f"Duplicate groups: {len(plan.groups):,}",
                     f"Duplicate files: {plan.duplicate_files:,}",
+                    f"Files to trash: {plan.files_to_trash:,}",
                     f"Affected notes: {len(plan.affected_note_ids):,}",
                     f"References to rewrite: {plan.references_to_rewrite:,}",
                     f"Protected files skipped: {plan.protected_skipped:,}",
@@ -167,7 +168,7 @@ class DeduplicatorDialog(QDialog):
                 "\n".join(group_plan.old_filenames),
                 format_bytes(group.size),
                 str(len(group.files)),
-                format_bytes(group.size * len(group_plan.old_filenames)),
+                format_bytes(group.reclaimable_bytes),
                 str(references),
             )
             for column, value in enumerate(values):
@@ -179,7 +180,7 @@ class DeduplicatorDialog(QDialog):
             return
         message = (
             f"This will modify {len(self.plan.affected_note_ids):,} notes, trash "
-            f"{self.plan.duplicate_files:,} duplicate media files, and may reclaim "
+            f"{self.plan.files_to_trash:,} duplicate media files, and may reclaim "
             f"{format_bytes(self.plan.reclaimable_bytes)}.\n\nContinue?"
         )
         if not askUser(message, parent=self):

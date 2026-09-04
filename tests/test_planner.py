@@ -36,8 +36,9 @@ def test_build_plan_scans_notes_once_and_counts_notes_and_occurrences(tmp_path: 
 
     assert plan.affected_note_ids == {1, 2}
     assert plan.references_to_rewrite == 3
-    assert plan.duplicate_files == 2
-    assert plan.reclaimable_bytes == 8
+    assert plan.duplicate_files == 1
+    assert plan.files_to_trash == 2
+    assert plan.reclaimable_bytes == 4
     assert plan.groups[0].choice.filename == "cat.mp3"
     assert plan.groups[0].group.reference_counts == {
         "cat812736128736128736.mp3": 2,

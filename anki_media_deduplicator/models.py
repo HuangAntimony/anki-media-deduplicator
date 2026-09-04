@@ -100,11 +100,15 @@ class DeduplicationPlan:
 
     @property
     def duplicate_files(self) -> int:
+        return sum(max(0, len(group.group.files) - 1) for group in self.groups)
+
+    @property
+    def files_to_trash(self) -> int:
         return sum(len(group.old_filenames) for group in self.groups)
 
     @property
     def reclaimable_bytes(self) -> int:
-        return sum(group.group.size * len(group.old_filenames) for group in self.groups)
+        return sum(group.group.reclaimable_bytes for group in self.groups)
 
 
 @dataclass(frozen=True, slots=True)
