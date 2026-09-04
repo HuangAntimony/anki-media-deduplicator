@@ -47,6 +47,21 @@ class AnkiCollectionPort:
             actual_name = self.collection.media.add_file(str(staged))
         return actual_name == target_name and target.exists() and files_equal(source, target)
 
+    def register_media_files(self, names: list[str]) -> list[str]:
+        """Ensure trash candidates have media DB entries before removal.
+
+        Anki's trash backend only creates a sync deletion marker when the
+        filename is already registered in its media database. Re-adding an
+        existing byte-identical file is the public, schema-independent way to
+        register it without changing its filename or contents.
+        """
+        registered = []
+        for name in names:
+            path = self.media_dir / name
+            if path.is_file() and self.collection.media.add_file(str(path)) == name:
+                registered.append(name)
+        return registered
+
     def trash_files(self, names: list[str]) -> None:
         self.collection.media.trash_files(names)
 
@@ -63,4 +78,3 @@ def require_supported_apis(collection: Any) -> None:
     missing = [name for owner, name in required if not callable(getattr(owner, name, None))]
     if missing:
         raise RuntimeError(f"Unsupported Anki version; missing APIs: {', '.join(missing)}")
-

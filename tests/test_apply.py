@@ -60,9 +60,36 @@ class FakePort:
     def static_references(self) -> set[str]:
         return self.static
 
+    def register_media_files(self, names: list[str]) -> list[str]:
+        self.events.append("register")
+        return names
+
     def trash_files(self, names: list[str]) -> None:
         self.events.append("trash")
         self.trashed.extend(names)
+
+
+class SyncAwareFakePort(FakePort):
+    """Model Anki's rule that only registered media gets deletion tombstones."""
+
+    def __init__(self, tmp_path: Path, notes: list[NoteSnapshot]) -> None:
+        super().__init__(tmp_path, notes)
+        self.registered_media: set[str] = set()
+        self.remote_media: set[str] = set()
+        self.deletion_tombstones: set[str] = set()
+
+    def register_media_files(self, names: list[str]) -> list[str]:
+        self.events.append("register")
+        registered = [name for name in names if (self.media_dir / name).is_file()]
+        self.registered_media.update(registered)
+        return registered
+
+    def trash_files(self, names: list[str]) -> None:
+        super().trash_files(names)
+        self.deletion_tombstones.update(self.registered_media.intersection(names))
+
+    def media_downloads_on_sync(self) -> set[str]:
+        return self.remote_media - self.deletion_tombstones
 
 
 def test_apply_creates_target_updates_all_references_then_trashes(tmp_path: Path) -> None:
@@ -71,12 +98,25 @@ def test_apply_creates_target_updates_all_references_then_trashes(tmp_path: Path
 
     result = ApplyExecutor(batch_size=1).execute(plan, port)
 
-    assert port.events == ["ensure", "update", "update", "trash"]
+    assert port.events == ["ensure", "update", "update", "register", "trash"]
     assert port.notes[1] == ["[sound:cat.mp3]"]
     assert port.notes[2] == ["[sound:cat.mp3]"]
     assert set(port.trashed) == {"cat812736128736128736.mp3", "cat192837465192837465.mp3"}
     assert result.updated_notes == 2
     assert result.rewritten_references == 2
+
+
+def test_apply_registers_untracked_media_before_trash_so_sync_does_not_restore_it(
+    tmp_path: Path,
+) -> None:
+    plan = make_plan(tmp_path)
+    port = SyncAwareFakePort(tmp_path, plan.notes)
+    port.remote_media.update(plan.groups[0].old_filenames)
+
+    ApplyExecutor().execute(plan, port)
+
+    assert port.media_downloads_on_sync() == set()
+    assert port.events[-2:] == ["register", "trash"]
 
 
 def test_note_failure_happens_before_any_trash(tmp_path: Path) -> None:

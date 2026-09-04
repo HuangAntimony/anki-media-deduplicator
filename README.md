@@ -21,7 +21,9 @@ Media** remains the right tool for finding files that are not referenced by any 
 - Apply rechecks existence, size, modification time, and bytes.
 - Canonical media is created before notes are changed.
 - Notes are updated through Anki's Collection API before redundant media is trashed.
-- Media is trashed only through Anki's MediaManager API, so media sync can record deletion.
+- Before trashing, each candidate is registered through Anki's MediaManager API so even
+  previously unindexed files receive a deletion tombstone; all trash operations also use that
+  API so the deletions propagate through media sync.
 - Any old filename still referenced after migration is retained.
 
 If Apply is interrupted, the safe intermediate state is that some notes point to the

@@ -24,6 +24,8 @@ class CollectionPort(Protocol):
 
     def static_references(self) -> set[str]: ...
 
+    def register_media_files(self, names: list[str]) -> list[str]: ...
+
     def trash_files(self, names: list[str]) -> None: ...
 
 
@@ -106,6 +108,13 @@ class ApplyExecutor:
         trash = sorted(name for name in replacements if name not in remaining)
         for name in sorted(remaining):
             logger.warning("referenced duplicate retained: %s", name)
+        if trash:
+            self.progress(tr("registering_media"), 0, len(trash))
+            registered = set(port.register_media_files(trash))
+            for name in trash:
+                if name not in registered:
+                    logger.warning("unregistered duplicate retained: %s", name)
+            trash = sorted(registered.intersection(trash))
         if trash:
             self.progress(tr("trashing_media"), 0, len(trash))
             port.trash_files(trash)
