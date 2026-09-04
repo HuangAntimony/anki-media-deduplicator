@@ -7,6 +7,7 @@ from typing import Any
 from .cache import HashCache
 from .compatibility import AnkiCollectionPort, require_supported_apis
 from .dedupe import find_duplicates
+from .i18n import tr
 from .models import CancellationToken, DeduplicationPlan
 from .planner import build_plan
 from .scanner import scan_directory
@@ -22,10 +23,10 @@ def scan_collection(
 ) -> DeduplicationPlan:
     require_supported_apis(collection)
     port = AnkiCollectionPort(collection)
-    progress("Indexing media...", 0, 0)
+    progress(tr("indexing_media"), 0, 0)
     protected = port.static_references()
     index = scan_directory(port.media_dir, protected, cancellation)
-    progress("Hashing candidate media...", 0, len(index.files))
+    progress(tr("hashing_media"), 0, len(index.files))
     cache = HashCache(cache_path)
     try:
         groups = find_duplicates(index.files, cache, cancellation, max_workers=4)
@@ -33,9 +34,8 @@ def scan_collection(
     finally:
         cache.close()
     cancellation.raise_if_cancelled()
-    progress("Scanning note references...", 0, 0)
+    progress(tr("scanning_references"), 0, 0)
     notes = list(port.iter_notes())
     cancellation.raise_if_cancelled()
-    progress("Building dry-run plan...", 0, len(groups))
+    progress(tr("building_plan"), 0, len(groups))
     return build_plan(index, groups, notes, port.media_dir)
-

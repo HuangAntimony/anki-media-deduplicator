@@ -86,6 +86,14 @@ from file**.
 
 The add-on does not run at startup and does not start synchronization.
 
+## Localization
+
+The add-on UI currently includes English and Simplified Chinese (`zh_CN`). It reads Anki's
+current interface language at runtime; unsupported languages fall back to English. To add or
+improve a translation, edit the locale dictionaries in
+[`anki_media_deduplicator/i18n.py`](anki_media_deduplicator/i18n.py), keep the message keys
+unchanged, and add a test in `tests/test_i18n.py`.
+
 ## Known limitations
 
 - Exact duplicates only; there is no perceptual hashing, transcoding, or recompression.

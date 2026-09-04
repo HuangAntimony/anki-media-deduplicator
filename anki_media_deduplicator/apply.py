@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .hashing import files_equal
+from .i18n import tr
 from .models import ApplyResult, DeduplicationPlan, GroupPlan, NoteSnapshot
 from .references import extract_references, rewrite_field
 
@@ -46,7 +47,7 @@ class ApplyExecutor:
         return all(files_equal(representative.path, file.path) for file in files[1:])
 
     def execute(self, plan: DeduplicationPlan, port: CollectionPort) -> ApplyResult:
-        self.progress("Verifying media...", 0, len(plan.groups))
+        self.progress(tr("verifying_media"), 0, len(plan.groups))
         active: list[GroupPlan] = []
         skipped = 0
         for index, group_plan in enumerate(plan.groups, 1):
@@ -65,7 +66,7 @@ class ApplyExecutor:
                 skipped += 1
                 continue
             active.append(group_plan)
-            self.progress("Verifying media...", index, len(plan.groups))
+            self.progress(tr("verifying_media"), index, len(plan.groups))
 
         replacements = {
             old: group_plan.choice.filename
@@ -74,7 +75,7 @@ class ApplyExecutor:
         }
         changed_notes: list[NoteSnapshot] = []
         replacement_count = 0
-        self.progress("Updating notes...", 0, len(plan.affected_note_ids))
+        self.progress(tr("updating_notes"), 0, len(plan.affected_note_ids))
         for note in port.iter_notes():
             fields: list[str] = []
             changed = False
@@ -89,7 +90,7 @@ class ApplyExecutor:
         for start in range(0, len(changed_notes), self.batch_size):
             port.update_notes(changed_notes[start : start + self.batch_size])
             self.progress(
-                "Updating notes...",
+                tr("updating_notes"),
                 min(start + self.batch_size, len(changed_notes)),
                 len(changed_notes),
             )
@@ -106,9 +107,9 @@ class ApplyExecutor:
         for name in sorted(remaining):
             logger.warning("referenced duplicate retained: %s", name)
         if trash:
-            self.progress("Trashing duplicate media...", 0, len(trash))
+            self.progress(tr("trashing_media"), 0, len(trash))
             port.trash_files(trash)
-            self.progress("Trashing duplicate media...", len(trash), len(trash))
+            self.progress(tr("trashing_media"), len(trash), len(trash))
         return ApplyResult(
             len(changed_notes), replacement_count, tuple(trash), skipped
         )

@@ -4,13 +4,15 @@ from __future__ import annotations
 def register() -> None:
     from aqt import gui_hooks
 
+    from .i18n import tr
+
     def add_menu_item() -> None:
         from aqt import mw as main_window
         from aqt.qt import QAction, qconnect
 
         from .ui import DeduplicatorDialog
 
-        action = QAction("Anki Media Deduplicator...", main_window)
+        action = QAction(tr("menu_item"), main_window)
         qconnect(action.triggered, lambda: DeduplicatorDialog.open(main_window))
         main_window.form.menuTools.addAction(action)
 
