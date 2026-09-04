@@ -45,9 +45,6 @@ choose **Tools → Add-ons → Install from file...**.
 > Applying moves redundant files to Anki's media trash; this alone does not free disk
 > space. To actually reclaim the space, open **Tools → Check Media** and permanently
 > delete the files from the media trash.
->
-> 应用去重只会先将多余媒体移入 Anki 回收站，不会立即释放磁盘空间。要真正释放空间，
-> 请打开 **工具 → 检查媒体**，在其中实际删除回收站里的媒体文件。
 
 The add-on does not run automatically and does not start a sync.
 
