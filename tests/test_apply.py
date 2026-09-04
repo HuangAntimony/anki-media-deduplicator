@@ -1,0 +1,137 @@
+from pathlib import Path
+
+import pytest
+
+from anki_media_deduplicator.apply import ApplyExecutor
+from anki_media_deduplicator.models import (
+    CanonicalChoice,
+    DeduplicationPlan,
+    DuplicateGroup,
+    FileInfo,
+    GroupPlan,
+    NoteSnapshot,
+    RestorationState,
+)
+
+
+def file_info(path: Path) -> FileInfo:
+    stat = path.stat()
+    return FileInfo(path.name, path, stat.st_size, path.suffix, stat.st_mtime_ns)
+
+
+def make_plan(tmp_path: Path) -> DeduplicationPlan:
+    names = ("cat812736128736128736.mp3", "cat192837465192837465.mp3")
+    for name in names:
+        (tmp_path / name).write_bytes(b"same")
+    files = [file_info(tmp_path / name) for name in names]
+    group = DuplicateGroup(files, 4, "hash")
+    choice = CanonicalChoice("cat.mp3", RestorationState.UNIQUE_INFERENCE, None)
+    group_plan = GroupPlan(group, choice, names)
+    notes = [NoteSnapshot(1, (f"[sound:{names[0]}]",)), NoteSnapshot(2, (f"[sound:{names[1]}]",))]
+    return DeduplicationPlan([group_plan], notes, 2, 8, 0, {1, 2}, 2)
+
+
+class FakePort:
+    def __init__(self, tmp_path: Path, notes: list[NoteSnapshot]) -> None:
+        self.media_dir = tmp_path
+        self.notes = {note.note_id: list(note.fields) for note in notes}
+        self.events: list[str] = []
+        self.trashed: list[str] = []
+        self.static: set[str] = set()
+        self.fail_updates = False
+        self.ignored_note_ids: set[int] = set()
+
+    def ensure_media_file(self, source: Path, target_name: str) -> bool:
+        self.events.append("ensure")
+        (self.media_dir / target_name).write_bytes(source.read_bytes())
+        return True
+
+    def iter_notes(self):
+        return [NoteSnapshot(note_id, tuple(fields)) for note_id, fields in self.notes.items()]
+
+    def update_notes(self, notes: list[NoteSnapshot]) -> None:
+        self.events.append("update")
+        if self.fail_updates:
+            raise RuntimeError("update failed")
+        for note in notes:
+            if note.note_id not in self.ignored_note_ids:
+                self.notes[note.note_id] = list(note.fields)
+
+    def static_references(self) -> set[str]:
+        return self.static
+
+    def trash_files(self, names: list[str]) -> None:
+        self.events.append("trash")
+        self.trashed.extend(names)
+
+
+def test_apply_creates_target_updates_all_references_then_trashes(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+
+    result = ApplyExecutor(batch_size=1).execute(plan, port)
+
+    assert port.events == ["ensure", "update", "update", "trash"]
+    assert port.notes[1] == ["[sound:cat.mp3]"]
+    assert port.notes[2] == ["[sound:cat.mp3]"]
+    assert set(port.trashed) == {"cat812736128736128736.mp3", "cat192837465192837465.mp3"}
+    assert result.updated_notes == 2
+    assert result.rewritten_references == 2
+
+
+def test_note_failure_happens_before_any_trash(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    port.fail_updates = True
+
+    with pytest.raises(RuntimeError, match="update failed"):
+        ApplyExecutor().execute(plan, port)
+
+    assert "trash" not in port.events
+
+
+def test_stale_file_skips_entire_group(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    (tmp_path / plan.groups[0].old_filenames[0]).write_bytes(b"changed")
+
+    result = ApplyExecutor().execute(plan, port)
+
+    assert result.skipped_groups == 1
+    assert not port.events
+
+
+def test_deleted_file_skips_entire_group(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    (tmp_path / plan.groups[0].old_filenames[0]).unlink()
+
+    result = ApplyExecutor().execute(plan, port)
+
+    assert result.skipped_groups == 1
+    assert not port.events
+
+
+def test_residual_note_reference_prevents_trash(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    old = plan.groups[0].old_filenames[0]
+    port.notes[99] = [f"[sound:{old}] unchanged by snapshot"]
+    port.ignored_note_ids.add(99)
+
+    result = ApplyExecutor().execute(plan, port)
+
+    assert old not in port.trashed
+    assert plan.groups[0].old_filenames[1] in port.trashed
+    assert result.trashed_files == (plan.groups[0].old_filenames[1],)
+
+
+def test_static_reference_prevents_trash(tmp_path: Path) -> None:
+    plan = make_plan(tmp_path)
+    port = FakePort(tmp_path, plan.notes)
+    old = plan.groups[0].old_filenames[0]
+    port.static.add(old)
+
+    ApplyExecutor().execute(plan, port)
+
+    assert old not in port.trashed

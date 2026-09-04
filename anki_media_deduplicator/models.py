@@ -73,3 +73,42 @@ class CanonicalChoice:
     state: RestorationState
     existing: FileInfo | None
 
+
+@dataclass(frozen=True, slots=True)
+class NoteSnapshot:
+    note_id: int
+    fields: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class GroupPlan:
+    group: DuplicateGroup
+    choice: CanonicalChoice
+    old_filenames: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class DeduplicationPlan:
+    groups: list[GroupPlan]
+    notes: list[NoteSnapshot]
+    media_files_scanned: int
+    media_size: int
+    protected_skipped: int
+    affected_note_ids: set[int] = field(default_factory=set)
+    references_to_rewrite: int = 0
+
+    @property
+    def duplicate_files(self) -> int:
+        return sum(len(group.old_filenames) for group in self.groups)
+
+    @property
+    def reclaimable_bytes(self) -> int:
+        return sum(group.group.size * len(group.old_filenames) for group in self.groups)
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyResult:
+    updated_notes: int
+    rewritten_references: int
+    trashed_files: tuple[str, ...]
+    skipped_groups: int
