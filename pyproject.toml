@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anki-media-deduplicator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Safe byte-for-byte media deduplication for Anki Desktop"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,4 +20,3 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-
