@@ -18,6 +18,21 @@ def full_sha256(path: Path, *, opener: Opener = open, chunk_size: int = CHUNK_SI
     return digest.hexdigest()
 
 
+def full_sha1(path: Path, *, opener: Opener = open, chunk_size: int = CHUNK_SIZE) -> str:
+    """Return the SHA-1 used by Hoshi Reader's content-addressed media names.
+
+    This digest is never used as duplicate evidence; SHA-256 plus the final
+    byte comparison remain the authoritative equality checks. It is only used
+    to validate a proposed Hoshi canonical filename after a duplicate group has
+    already been proven byte-identical.
+    """
+    digest = hashlib.sha1()
+    with opener(path, "rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def quick_fingerprint(
     path: Path,
     size: int,
@@ -49,4 +64,3 @@ def files_equal(
                 return False
             if not left_chunk:
                 return True
-

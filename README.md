@@ -36,6 +36,14 @@ all valid prefix candidates in a duplicate group instead of blindly stripping di
 the longest common prefix. Ambiguous groups still deduplicate, but retain a deterministic
 existing filename selected by reference count, then filename length, then lexical order.
 
+The add-on also understands Hoshi Reader Android's content-addressed export format introduced
+by [PR #132](https://github.com/HuangAntimony/Hoshi-Reader-Android/pull/132):
+`hoshi_audio_<sha1>`, `hoshi_dict_<sha1>`, `hoshi_cover_<sha1>`, and
+`hoshi_sasayaki_<sha1>`, with the original extension. If AnkiDroid later appends a temporary
+random suffix to one of these names, the add-on restores the 40-character SHA-1 name after
+checking that the embedded SHA-1 matches the file bytes. This rule is only used after the
+normal SHA-256 and byte-for-byte duplicate checks have succeeded.
+
 ## Complexity
 
 Directory indexing uses `os.scandir()` and is O(N). Unique `(size, extension)` buckets are
@@ -106,4 +114,3 @@ The core modules do not import Qt or Anki and can be tested with normal pytest.
 ## License
 
 GNU Affero General Public License v3.0 or later.
-

@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from anki_media_deduplicator.hashing import files_equal, full_sha256, quick_fingerprint
+from anki_media_deduplicator.hashing import (
+    files_equal,
+    full_sha1,
+    full_sha256,
+    quick_fingerprint,
+)
 
 
 class CountingOpener:
@@ -37,3 +42,9 @@ def test_chunked_comparison_reads_equal_files(tmp_path: Path) -> None:
     assert files_equal(first, second, opener=opener, chunk_size=1024 * 1024)
     assert opener.paths == [first, second]
 
+
+def test_full_sha1_matches_content_addressed_filename_digest(tmp_path: Path) -> None:
+    path = tmp_path / "media.bin"
+    path.write_bytes(b"Hoshi Reader content-addressed media")
+
+    assert full_sha1(path) == "e79788a4e3776e7aa07b2c5e57a00ed208e632ec"

@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from anki_media_deduplicator.filename_inference import select_canonical
@@ -105,6 +106,116 @@ def test_matching_existing_target_is_used_even_if_not_indexed_in_group(tmp_path:
 
 def test_untransformed_short_prefix_is_not_treated_as_ankidroid_pattern(tmp_path: Path) -> None:
     duplicate_group = group(tmp_path, "a812736128736128736.mp3", "a192837465192837465.mp3")
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.state is RestorationState.NOT_ANKIDROID_PATTERN
+
+
+def test_hoshi_content_addressed_filename_is_preferred(tmp_path: Path) -> None:
+    payload = b"same hoshi audio"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    duplicate_group = group(
+        tmp_path,
+        f"hoshi_audio_{sha1}_1234567890123456789.mp3",
+        f"hoshi_audio_{sha1}_9876543210987654321.mp3",
+    )
+    # The helper above writes its default payload, so replace it with the bytes
+    # whose SHA-1 is encoded in the filenames.
+    for file in duplicate_group.files:
+        file.path.write_bytes(payload)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == f"hoshi_audio_{sha1}.mp3"
+    assert choice.state is RestorationState.UNIQUE_INFERENCE
+    assert choice.existing is None
+
+
+def test_existing_hoshi_content_addressed_filename_wins(tmp_path: Path) -> None:
+    payload = b"same dictionary media"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    target = f"hoshi_dict_{sha1}.svg"
+    duplicate_group = group(
+        tmp_path,
+        target,
+        f"hoshi_dict_{sha1}_1234567890123456789.svg",
+    )
+    for file in duplicate_group.files:
+        file.path.write_bytes(payload)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == target
+    assert choice.state is RestorationState.EXISTING_CLEAN
+
+
+def test_hoshi_filename_without_separator_before_random_suffix_is_supported(
+    tmp_path: Path,
+) -> None:
+    payload = b"same audio without separator"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    duplicate_group = group(
+        tmp_path,
+        f"hoshi_audio_{sha1}1234567890123456789.mp3",
+        f"hoshi_audio_{sha1}9876543210987654321.mp3",
+    )
+    for file in duplicate_group.files:
+        file.path.write_bytes(payload)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == f"hoshi_audio_{sha1}.mp3"
+    assert choice.state is RestorationState.UNIQUE_INFERENCE
+
+
+def test_hoshi_content_addressed_target_conflict_falls_back(tmp_path: Path) -> None:
+    payload = b"same cover"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    duplicate_group = group(
+        tmp_path,
+        f"hoshi_cover_{sha1}_1234567890123456789.jpg",
+        f"hoshi_cover_{sha1}_9876543210987654321.jpg",
+    )
+    for file in duplicate_group.files:
+        file.path.write_bytes(payload)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+    (tmp_path / f"hoshi_cover_{sha1}.jpg").write_bytes(b"different")
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.state is RestorationState.TARGET_CONFLICT
+    assert choice.filename in {file.filename for file in duplicate_group.files}
+
+
+def test_invalid_hoshi_hash_is_not_used_for_restoration(tmp_path: Path) -> None:
+    payload = b"not the claimed hash"
+    duplicate_group = group(
+        tmp_path,
+        "hoshi_audio_0000000000000000000000000000000000000000_123.mp3",
+        "hoshi_audio_0000000000000000000000000000000000000000_456.mp3",
+    )
+    for file in duplicate_group.files:
+        file.path.write_bytes(payload)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
 
     choice = select_canonical(duplicate_group, {}, tmp_path)
 
