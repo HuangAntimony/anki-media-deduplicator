@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from .filename_inference import select_canonical
+from .filename_inference import conflict_fallback, select_canonical
 from .models import (
     DeduplicationPlan,
     DuplicateGroup,
@@ -30,13 +30,22 @@ def build_plan(
             note_references[note.note_id] = matched
             counts.update(matched)
 
-    group_plans: list[GroupPlan] = []
-    replacements: dict[str, str] = {}
+    proposed_choices = []
     for group in groups:
         group.reference_counts = {
             file.filename: counts[file.filename] for file in group.files if counts[file.filename]
         }
         choice = select_canonical(group, group.reference_counts, media_dir)
+        proposed_choices.append((group, choice))
+
+    new_target_counts = Counter(
+        choice.filename for _, choice in proposed_choices if choice.existing is None
+    )
+    group_plans: list[GroupPlan] = []
+    replacements: dict[str, str] = {}
+    for group, choice in proposed_choices:
+        if choice.existing is None and new_target_counts[choice.filename] > 1:
+            choice = conflict_fallback(group, group.reference_counts)
         group.canonical = choice.existing
         old_names = tuple(
             file.filename for file in group.files if file.filename != choice.filename

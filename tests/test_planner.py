@@ -4,9 +4,11 @@ from anki_media_deduplicator.cache import NullHashCache
 from anki_media_deduplicator.dedupe import find_duplicates
 from anki_media_deduplicator.models import (
     CancellationToken,
+    DuplicateGroup,
     FileInfo,
     IndexResult,
     NoteSnapshot,
+    RestorationState,
 )
 from anki_media_deduplicator.planner import build_plan
 
@@ -44,3 +46,31 @@ def test_build_plan_scans_notes_once_and_counts_notes_and_occurrences(tmp_path: 
         "cat812736128736128736.mp3": 2,
         "cat192837465192837465.mp3": 1,
     }
+
+
+def test_build_plan_falls_back_when_different_groups_claim_same_new_target(
+    tmp_path: Path,
+) -> None:
+    groups = []
+    files = []
+    for index, payload in enumerate((b"first", b"second")):
+        group_files = []
+        for random_suffix in (123456789012345678, 987654321098765432):
+            path = tmp_path / f"shared_{random_suffix + index}.jpg"
+            path.write_bytes(payload)
+            stat = path.stat()
+            info = FileInfo(path.name, path, stat.st_size, path.suffix, stat.st_mtime_ns)
+            files.append(info)
+            group_files.append(info)
+        groups.append(DuplicateGroup(group_files, len(payload), f"hash-{index}"))
+    index = IndexResult(files, 4, sum(file.size for file in files), 0, 0, 0, 4)
+
+    plan = build_plan(index, groups, [], tmp_path)
+
+    assert [group.choice.state for group in plan.groups] == [
+        RestorationState.TARGET_CONFLICT,
+        RestorationState.TARGET_CONFLICT,
+    ]
+    assert len({group.choice.filename for group in plan.groups}) == 2
+    assert all(group.choice.existing is not None for group in plan.groups)
+    assert plan.files_to_trash == 2

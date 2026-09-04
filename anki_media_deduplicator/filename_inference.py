@@ -12,6 +12,10 @@ HOSHI_SHA1_RE = re.compile(
     r"^(hoshi_(?:audio|dict|cover|sasayaki))_([0-9a-f]{40})(?:_?[0-9]{1,19})?$",
     re.IGNORECASE,
 )
+HOSHI_FAMILY_RE = re.compile(
+    r"^(hoshi_(?:audio|dict|cover|sasayaki))_.+$",
+    re.IGNORECASE,
+)
 ANDROID_DELIMITED_SUFFIX_RE = re.compile(r"^(?P<prefix>.+)_(?P<suffix>[0-9]{1,19})$")
 
 
@@ -56,6 +60,17 @@ def _external_info(path: Path) -> FileInfo:
     return FileInfo(path.name, path, stat.st_size, path.suffix, stat.st_mtime_ns)
 
 
+def conflict_fallback(
+    group: DuplicateGroup, reference_counts: dict[str, int]
+) -> CanonicalChoice:
+    fallback = _fallback(group, reference_counts)
+    return CanonicalChoice(
+        fallback.filename,
+        RestorationState.TARGET_CONFLICT,
+        fallback,
+    )
+
+
 def _select_hoshi_content_addressed(
     group: DuplicateGroup,
     fallback: FileInfo,
@@ -64,10 +79,10 @@ def _select_hoshi_content_addressed(
     """Select Hoshi Reader's SHA-1 filename when it can be proven safely.
 
     PR #132 changed Hoshi's preferred names to ``hoshi_<kind>_<sha1>.<ext>``.
-    AnkiDroid may append a random decimal suffix (with or without an underscore)
-    while importing that preferred name. Filename recognition is only a hint:
-    the embedded SHA-1 must match the actual bytes of the already-verified
-    duplicate group before it can produce a target.
+    Legacy Hoshi names and AnkiDroid-randomized content-addressed names are both
+    migrated to that format. Filename recognition is only a naming hint: an
+    embedded SHA-1 must match the bytes of the already-verified duplicate group,
+    and legacy targets are computed from those bytes.
     """
     matches = []
     for file in group.files:
@@ -75,7 +90,29 @@ def _select_hoshi_content_addressed(
         if match:
             matches.append((file, match.group(1).lower(), match.group(2).lower()))
     if not matches:
-        return None
+        legacy_matches = [HOSHI_FAMILY_RE.fullmatch(file.path.stem) for file in group.files]
+        if not all(legacy_matches):
+            return None
+        families = {match.group(1).lower() for match in legacy_matches if match}
+        if len(families) != 1 or not all(
+            ANDROID_DELIMITED_SUFFIX_RE.fullmatch(file.path.stem) for file in group.files
+        ):
+            return None
+        content_sha1 = full_sha1(group.files[0].path)
+        family = next(iter(families))
+        target_name = f"{family}_{content_sha1}{group.files[0].extension}"
+        target_path = media_dir / target_name
+        if not target_path.exists():
+            return CanonicalChoice(target_name, RestorationState.UNIQUE_INFERENCE, None)
+        group_names = {file.filename: file for file in group.files}
+        target = group_names.get(target_name) or _external_info(target_path)
+        if target.size == group.size and files_equal(target.path, group.files[0].path):
+            return CanonicalChoice(target_name, RestorationState.EXISTING_CLEAN, target)
+        return CanonicalChoice(
+            fallback.filename,
+            RestorationState.TARGET_CONFLICT,
+            fallback,
+        )
 
     # A malformed or mixed Hoshi-looking group must not fall through to the
     # generic digit-suffix inference: that could manufacture a less trustworthy

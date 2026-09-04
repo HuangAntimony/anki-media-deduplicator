@@ -54,16 +54,19 @@ def test_numeric_original_is_not_blindly_stripped(tmp_path: Path) -> None:
     assert choice.filename in {file.filename for file in duplicate_group.files}
 
 
-def test_ankidroid_separator_is_removed_before_random_suffix(tmp_path: Path) -> None:
+def test_legacy_hoshi_audio_is_migrated_to_content_addressed_filename(
+    tmp_path: Path,
+) -> None:
     duplicate_group = group(
         tmp_path,
         "hoshi_audio_-1243218021_3234766960201471919.mp3",
         "hoshi_audio_-1243218021_3730691864949824170.mp3",
     )
+    sha1 = hashlib.sha1(b"same").hexdigest()
 
     choice = select_canonical(duplicate_group, {}, tmp_path)
 
-    assert choice.filename == "hoshi_audio_-1243218021.mp3"
+    assert choice.filename == f"hoshi_audio_{sha1}.mp3"
     assert choice.state is RestorationState.UNIQUE_INFERENCE
 
 
@@ -227,6 +230,51 @@ def test_hoshi_content_addressed_target_conflict_falls_back(tmp_path: Path) -> N
 
     assert choice.state is RestorationState.TARGET_CONFLICT
     assert choice.filename in {file.filename for file in duplicate_group.files}
+
+
+def test_legacy_hoshi_cover_is_migrated_to_content_addressed_filename(
+    tmp_path: Path,
+) -> None:
+    payload = b"legacy cover bytes"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    duplicate_group = group(
+        tmp_path,
+        "hoshi_cover_cover_1234567890123456789.jpg",
+        "hoshi_cover_cover_987654321098765432.jpg",
+    )
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == f"hoshi_cover_{sha1}.jpg"
+    assert choice.state is RestorationState.UNIQUE_INFERENCE
+    assert choice.existing is None
+
+
+def test_legacy_hoshi_target_conflict_uses_referenced_existing_fallback(
+    tmp_path: Path,
+) -> None:
+    payload = b"legacy conflicting cover"
+    sha1 = hashlib.sha1(payload).hexdigest()
+    names = (
+        "hoshi_cover_cover_1234567890123456789.jpg",
+        "hoshi_cover_cover_9123456789012345678.jpg",
+    )
+    duplicate_group = group(tmp_path, *names)
+    duplicate_group.files = [
+        make_file(tmp_path, file.filename, payload) for file in duplicate_group.files
+    ]
+    duplicate_group.size = len(payload)
+    (tmp_path / f"hoshi_cover_{sha1}.jpg").write_bytes(b"different")
+
+    choice = select_canonical(duplicate_group, {names[1]: 7}, tmp_path)
+
+    assert choice.filename == names[1]
+    assert choice.state is RestorationState.TARGET_CONFLICT
+    assert choice.existing is duplicate_group.files[1]
 
 
 def test_invalid_hoshi_hash_is_not_used_for_restoration(tmp_path: Path) -> None:
