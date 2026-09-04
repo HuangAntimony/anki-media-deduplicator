@@ -31,10 +31,13 @@ never intentionally trashed before reference migration completes.
 ## Canonical filename restoration
 
 After content equality is proven, the add-on attempts to recover the basename that existed
-before Android `File.createTempFile()` appended a non-negative random `long`. It intersects
-all valid prefix candidates in a duplicate group instead of blindly stripping digits or using
-the longest common prefix. Ambiguous groups still deduplicate, but retain a deterministic
-existing filename selected by reference count, then filename length, then lexical order.
+before Android's temporary-file helper appended a non-negative random `long`. Current
+AnkiDroid separates that random suffix from the requested basename with `_`, so a name such as
+`lesson1_1234567890123456789.mp3` is interpreted as the original `lesson1.mp3`; the original
+trailing digit is preserved. For formats without that delimiter, the add-on intersects all
+valid prefix candidates instead of blindly stripping digits or using the longest common prefix.
+Ambiguous groups still deduplicate, but retain a deterministic existing filename selected by
+reference count, then filename length, then lexical order.
 
 The add-on also understands Hoshi Reader Android's content-addressed export format introduced
 by [PR #132](https://github.com/HuangAntimony/Hoshi-Reader-Android/pull/132):

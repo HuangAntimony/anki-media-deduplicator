@@ -12,6 +12,7 @@ HOSHI_SHA1_RE = re.compile(
     r"^(hoshi_(?:audio|dict|cover|sasayaki))_([0-9a-f]{40})(?:_?[0-9]{1,19})?$",
     re.IGNORECASE,
 )
+ANDROID_DELIMITED_SUFFIX_RE = re.compile(r"^(?P<prefix>.+)_(?P<suffix>[0-9]{1,19})$")
 
 
 def _valid_android_prefix(prefix: str) -> bool:
@@ -19,6 +20,18 @@ def _valid_android_prefix(prefix: str) -> bool:
 
 
 def _prefix_candidates(stem: str) -> set[str]:
+    # AnkiDroid's current temporary-file helper separates the requested prefix
+    # and the random decimal suffix with an underscore. Treat that delimiter as
+    # structural, so ``lesson1_123...`` restores ``lesson1`` instead of keeping
+    # the generated underscore or mistaking the original trailing digit for
+    # part of the random suffix. This still preserves an original trailing
+    # underscore: ``foo__123`` restores ``foo_``.
+    delimited = ANDROID_DELIMITED_SUFFIX_RE.fullmatch(stem)
+    if delimited:
+        prefix = delimited.group("prefix")
+        if _valid_android_prefix(prefix) and int(delimited.group("suffix")) <= ANDROID_LONG_MAX:
+            return {prefix}
+
     candidates: set[str] = set()
     max_length = min(ANDROID_SUFFIX_MAX_DIGITS, len(stem))
     for length in range(1, max_length + 1):

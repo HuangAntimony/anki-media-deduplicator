@@ -54,6 +54,32 @@ def test_numeric_original_is_not_blindly_stripped(tmp_path: Path) -> None:
     assert choice.filename in {file.filename for file in duplicate_group.files}
 
 
+def test_ankidroid_separator_is_removed_before_random_suffix(tmp_path: Path) -> None:
+    duplicate_group = group(
+        tmp_path,
+        "hoshi_audio_-1243218021_3234766960201471919.mp3",
+        "hoshi_audio_-1243218021_3730691864949824170.mp3",
+    )
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == "hoshi_audio_-1243218021.mp3"
+    assert choice.state is RestorationState.UNIQUE_INFERENCE
+
+
+def test_ankidroid_separator_preserves_original_trailing_digits(tmp_path: Path) -> None:
+    duplicate_group = group(
+        tmp_path,
+        "lesson1_1234567890123456789.mp3",
+        "lesson1_987654321098765432.mp3",
+    )
+
+    choice = select_canonical(duplicate_group, {}, tmp_path)
+
+    assert choice.filename == "lesson1.mp3"
+    assert choice.state is RestorationState.UNIQUE_INFERENCE
+
+
 def test_non_android_names_use_deterministic_existing_fallback(tmp_path: Path) -> None:
     duplicate_group = group(tmp_path, "longer.mp3", "a.mp3", "b.mp3")
 
